@@ -288,6 +288,20 @@ _read_date_range (int *flag,
   unsigned int dash_count = 0;
   time_t t;
   struct tm tm;
+  struct {
+    char *str;
+    int is_iso8601;
+  } const supported_formats[] = {
+    {"%m/%d/%Y", 0},
+    {"%b/%d/%Y", 0},
+    {"%m-%d-%Y", 0},
+    {"%b-%d-%Y", 0}
+  };
+  const size_t max_supported_formats =
+    sizeof(supported_formats) / sizeof(supported_formats[0]);
+  char *strptime_ret_ptr = NULL;
+  int range2_is_iso8601 = 0;
+  int date_valid = 0;
 
   assert (flag);
   assert (range1);
@@ -376,21 +390,27 @@ _read_date_range (int *flag,
     t = time (NULL);
   else
     {
-      if (!strptime (range1_str, "%m/%d/%Y", &tm))
+      date_valid = 0;
+      for (size_t i = 0; i < max_supported_formats; ++i)
         {
-          if (!strptime (range1_str, "%b/%d/%Y", &tm))
+          strptime_ret_ptr = strptime (range1_str,
+                                       supported_formats[i].str,
+                                       &tm);
+          /* strptime() will return a pointer to the first char not processed.
+           * Which means it will return successfully in case of first n chars
+           * matching the format. Only a pointer to a null char means the input
+           * was fully consumed.
+           */
+          if (strptime_ret_ptr != NULL && *strptime_ret_ptr == '\0')
             {
-              if (!strptime (range1_str, "%m-%d-%Y", &tm))
-                {
-                  if (!strptime (range1_str, "%b-%d-%Y", &tm))
-                    {
-                      fprintf (stderr,
-                               "Invalid time specification '%s'.\n",
-                               range1_str);
-                      exit (EXIT_FAILURE);
-                    }
-                }
+              date_valid = 1;
+              break;
             }
+        }
+      if (!date_valid)
+        {
+          fprintf (stderr, "Invalid time specification '%s.\n", range1_str);
+          exit (EXIT_FAILURE);
         }
 
       /* strptime() does not set tm_isdst.  Set so mktime() will not
@@ -419,21 +439,32 @@ _read_date_range (int *flag,
     t = time (NULL);
   else
     {
-      if (!strptime (range2_str, "%m/%d/%Y", &tm))
+      date_valid = 0;
+      for (size_t i = 0; i < max_supported_formats; ++i)
         {
-          if (!strptime (range2_str, "%b/%d/%Y", &tm))
+          strptime_ret_ptr = strptime (range2_str,
+                                       supported_formats[i].str,
+                                       &tm);
+          /* strptime() will return a pointer to the first char not processed.
+           * Which means it will return successfully in case of first n chars
+           * matching the format. Only a pointer to a null char means the input
+           * was fully consumed.
+           */
+          if (strptime_ret_ptr != NULL && *strptime_ret_ptr == '\0')
             {
-              if (!strptime (range2_str, "%m-%d-%Y", &tm))
+              date_valid = 1;
+              if (supported_formats[i].is_iso8601)
                 {
-                  if (!strptime (range2_str, "%b-%d-%Y", &tm))
-                    {
-                      fprintf (stderr,
-                               "Invalid time specification '%s'.\n",
-                               range2_str);
-                      exit (EXIT_FAILURE);
-                    }
+                  range2_is_iso8601 = 1;
                 }
+              break;
             }
+        }
+
+      if (!date_valid)
+        {
+          fprintf (stderr, "Invalid time specification '%s.\n", range2_str);
+          exit (EXIT_FAILURE);
         }
 
       /* strptime() does not set tm_isdst.  Set so mktime() will not
@@ -460,8 +491,10 @@ _read_date_range (int *flag,
 
   /* Date range input means beginning of range1 date to end of range2 date
    * so we might need to add seconds to the end of the range2 date.
+   * Only exceptions to this are when range2 is accurate to the second.
+   * Which happens when either range2 is "now" or given in ISO 8601 format.
    */
-  if (strcasecmp (range2_str, "now"))
+  if (strcasecmp (range2_str, "now") && !range2_is_iso8601)
     (*range2) = (*range2) + (24 * 60 * 60);
 
   free (range1_str);
