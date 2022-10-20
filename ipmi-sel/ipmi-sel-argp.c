@@ -295,7 +295,8 @@ _read_date_range (int *flag,
     {"%m/%d/%Y", 0},
     {"%b/%d/%Y", 0},
     {"%m-%d-%Y", 0},
-    {"%b-%d-%Y", 0}
+    {"%b-%d-%Y", 0},
+    {"%FT%T",    1}
   };
   const size_t max_supported_formats =
     sizeof(supported_formats) / sizeof(supported_formats[0]);
